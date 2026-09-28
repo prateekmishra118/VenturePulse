@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+/* ==================================================
+   VenturePulse design tokens
+   Palette: deep-report ink/emerald, warm paper background,
+   gold + coral accents. Deliberately not another
+   purple-gradient AI landing page.
+   ================================================== */
+@theme {
+  --color-ink: #0e2a22;
+  --color-ink-soft: #16392f;
+  --color-ink-2: #1f4a3b;
+
+  --color-emerald: #1f8a5f;
+  --color-emerald-dark: #15694a;
+  --color-emerald-light: #e5f3ec;
+
+  --color-gold: #c9a227;
+  --color-gold-light: #f6edcc;
+
+  --color-coral: #e4572e;
+  --color-coral-light: #fbe6de;
+
+  --color-paper: #faf8f3;
+  --color-paper-deep: #f0ecdf;
+  --color-charcoal: #211f1c;
+  --color-muted: #6b6558;
+  --color-line: #e4dfd0;
+
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-charcoal);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+  }
+}

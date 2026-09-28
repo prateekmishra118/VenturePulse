@@ -1,0 +1,19 @@
+{
+  "name": "venturepulse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "VenturePulse — Validate. Analyze. Improve. A startup idea validation platform.",
+  "scripts": {
+    "dev": "concurrently -n BACKEND,FRONTEND -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "test": "npm test --prefix backend && npm test --prefix frontend",
+    "type-check": "npm run type-check --prefix backend && npm run type-check --prefix frontend"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

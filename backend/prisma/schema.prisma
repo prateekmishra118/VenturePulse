@@ -1,0 +1,486 @@
+// ==================================================
+// VenturePulse — Prisma schema
+// PostgreSQL. Run `npm run prisma:migrate` (backend/) after setting
+// DATABASE_URL in your .env to create these tables.
+// ==================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================================================
+// Enums
+// ==================================================
+
+enum AnalysisStatus {
+  PENDING
+  ANALYZING
+  COMPLETED
+  FAILED
+}
+
+/// Matches the verdict bands documented in the scoring engine
+/// (backend/src/analyzers/, Phase 7-8).
+enum Verdict {
+  WEAK // 0-39
+  NEEDS_WORK // 40-59
+  MODERATE_POTENTIAL // 60-74
+  PROMISING // 75-89
+  EXCEPTIONAL_POTENTIAL // 90-100
+}
+
+/// The 9 weighted scoring categories from the scoring engine spec.
+enum ScoreCategory {
+  PROBLEM_STRENGTH
+  CUSTOMER
+  MARKET
+  COMPETITION
+  DIFFERENTIATION
+  BUSINESS_MODEL
+  FEASIBILITY
+  SCALABILITY
+  RISK
+}
+
+/// Every market figure must be labeled with how trustworthy it is —
+/// never presented as fact when it isn't. See MarketAnalysis below.
+enum DataConfidence {
+  VERIFIED
+  ESTIMATE
+  ASSUMPTION
+  AI_RECOMMENDATION
+}
+
+enum RiskType {
+  MARKET
+  COMPETITION
+  FINANCIAL
+  TECHNICAL
+  OPERATIONAL
+  REGULATORY
+  CUSTOMER_ADOPTION
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum CompetitorSource {
+  USER_PROVIDED
+  AI_DISCOVERED
+}
+
+enum RecommendationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// The decision rule outcome for a validation experiment, per the
+/// "Continue / Modify / Reject" pattern from the spec. PENDING until
+/// the founder actually runs the experiment and records a result.
+enum ExperimentDecision {
+  PENDING
+  CONTINUE
+  MODIFY
+  REJECT
+}
+
+// ==================================================
+// Core: users & startup ideas
+// ==================================================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ideas StartupIdea[]
+
+  @@map("users")
+}
+
+/// The structured startup idea intake form (Phase 6).
+model StartupIdea {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  startupName          String  @map("startup_name")
+  ideaDescription       String  @map("idea_description")
+  problem                String
+  targetCustomer         String  @map("target_customer")
+  location                String?
+  industry                String
+  businessModel           String  @map("business_model")
+  expectedPricing          String? @map("expected_pricing")
+  existingCompetitors       String? @map("existing_competitors")
+  uniqueSellingProposition String? @map("unique_selling_proposition")
+  additionalInfo            String? @map("additional_info")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  analyses Analysis[]
+
+  @@index([userId])
+  @@map("startup_ideas")
+}
+
+// ==================================================
+// Analysis — one validation run of a StartupIdea
+// ==================================================
+
+model Analysis {
+  id     String      @id @default(cuid())
+  ideaId String      @map("idea_id")
+  idea   StartupIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  status       AnalysisStatus @default(PENDING)
+  overallScore Float?         @map("overall_score")
+  verdict      Verdict?
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+
+  // One row per scoring category (9 total once complete) — see ScoreCategory.
+  scores Score[]
+
+  // 1:1 detail tables for the categories with rich, category-specific
+  // structure. Customer/Differentiation/Scalability are fully represented
+  // by their Score row + rationale and don't need a dedicated table.
+  problemAnalysis      ProblemAnalysis?
+  marketAnalysis        MarketAnalysis?
+  competitionAnalysis   CompetitionAnalysis?
+  businessModelAnalysis BusinessModelAnalysis?
+  feasibilityAnalysis   FeasibilityAnalysis?
+  riskAnalysis          RiskAnalysis?
+
+  aiCritique   AICritique?
+  improvedIdea ImprovedIdea?
+  mvpPlan      MvpPlan?
+  report       Report?
+
+  recommendations       Recommendation[]
+  validationExperiments ValidationExperiment[]
+
+  @@index([ideaId])
+  @@map("analyses")
+}
+
+/// One row per ScoreCategory per Analysis (9 rows once an analysis
+/// completes). The application calculates the weighted overall score
+/// from these rows — the AI never returns the final number directly.
+model Score {
+  id         String        @id @default(cuid())
+  analysisId String        @map("analysis_id")
+  analysis   Analysis      @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  category   ScoreCategory
+
+  score     Int // 0-100
+  weight    Float // e.g. 0.15 for 15%
+  rationale String // short explanation shown on the category card
+
+  @@unique([analysisId, category])
+  @@map("scores")
+}
+
+// ==================================================
+// Category detail tables
+// Each shares the "what we found / strength / weakness / recommendation"
+// shape from the Detailed Analysis page, plus category-specific fields.
+// ==================================================
+
+model ProblemAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  problemClarity         String @map("problem_clarity")
+  problemSeverity          String @map("problem_severity")
+  frequency                 String
+  targetCustomerClarity     String @map("target_customer_clarity")
+  existingAlternatives       String @map("existing_alternatives")
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  @@map("problem_analyses")
+}
+
+model MarketAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  marketOpportunity    String  @map("market_opportunity")
+  geographicOpportunity String  @map("geographic_opportunity")
+  growthAssumptions      String  @map("growth_assumptions")
+
+  // TAM/SAM/SOM are only included "where meaningful" per the spec, so
+  // all three are optional, and each carries its own confidence label —
+  // never presented as fact without saying whether it's verified.
+  tamEstimate     String?        @map("tam_estimate")
+  tamConfidence   DataConfidence? @map("tam_confidence")
+  samEstimate     String?        @map("sam_estimate")
+  samConfidence   DataConfidence? @map("sam_confidence")
+  somEstimate     String?        @map("som_estimate")
+  somConfidence   DataConfidence? @map("som_confidence")
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  @@map("market_analyses")
+}
+
+model CompetitionAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  directCompetitors    String @map("direct_competitors")
+  indirectCompetitors   String @map("indirect_competitors")
+  existingAlternatives   String @map("existing_alternatives")
+  competitiveStrengths    String @map("competitive_strengths")
+  competitiveWeaknesses    String @map("competitive_weaknesses")
+  differentiation           String
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  competitors Competitor[]
+
+  @@map("competition_analyses")
+}
+
+/// A single competitor row shown in the comparison table. `source`
+/// distinguishes what the user typed in from what (if anything) the AI
+/// found — the app must never fabricate competitor data and present it
+/// as discovered fact.
+model Competitor {
+  id                     String               @id @default(cuid())
+  competitionAnalysisId String               @map("competition_analysis_id")
+  competitionAnalysis   CompetitionAnalysis @relation(fields: [competitionAnalysisId], references: [id], onDelete: Cascade)
+
+  name            String
+  price            String?
+  targetMarket      String? @map("target_market")
+  features           String?
+  differentiation     String?
+  businessModel        String? @map("business_model")
+  source               CompetitorSource
+
+  @@index([competitionAnalysisId])
+  @@map("competitors")
+}
+
+model BusinessModelAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  revenueModel        String @map("revenue_model")
+  pricingStrategy       String @map("pricing_strategy")
+  customerAcquisition     String @map("customer_acquisition")
+  costs                    String
+  monetization              String
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  @@map("business_model_analyses")
+}
+
+model FeasibilityAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  technicalFeasibility    String @map("technical_feasibility")
+  operationalFeasibility    String @map("operational_feasibility")
+  financialFeasibility        String @map("financial_feasibility")
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  @@map("feasibility_analyses")
+}
+
+model RiskAnalysis {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  findings       String
+  strength       String
+  weakness       String
+  recommendation String
+
+  risks RiskItem[]
+
+  @@map("risk_analyses")
+}
+
+/// One row per identified risk (market, competition, financial,
+/// technical, operational, regulatory, customer adoption) — a risk
+/// analysis can and usually will have several of these.
+model RiskItem {
+  id             String       @id @default(cuid())
+  riskAnalysisId String       @map("risk_analysis_id")
+  riskAnalysis   RiskAnalysis @relation(fields: [riskAnalysisId], references: [id], onDelete: Cascade)
+
+  type        RiskType
+  severity    RiskSeverity
+  description String
+
+  @@index([riskAnalysisId])
+  @@map("risk_items")
+}
+
+// ==================================================
+// AI Critic, Improve My Idea, MVP Generator
+// Not in the original flat table list, but each is a named, structured
+// feature in the product spec with its own defined output shape — so
+// each gets its own 1:1 table rather than being crammed into
+// Recommendation, per the "adjust schema where architecture requires it"
+// allowance.
+// ==================================================
+
+/// The dedicated, deliberately skeptical AI Critic section.
+model AICritique {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  strengths           String[]
+  weaknesses           String[]
+  biggestRisk           String   @map("biggest_risk")
+  hiddenAssumptions       String[] @map("hidden_assumptions")
+  whyThisCouldFail         String[] @map("why_this_could_fail")
+  hardQuestions             String[] @map("hard_questions")
+  recommendedActions         String[] @map("recommended_actions")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ai_critiques")
+}
+
+/// Output of the "Improve My Idea" tool.
+model ImprovedIdea {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  originalIdea  String   @map("original_idea")
+  improvedIdea   String   @map("improved_idea")
+  whyBetter       String   @map("why_better")
+  tradeOffs         String[] @map("trade_offs")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("improved_ideas")
+}
+
+/// Output of the MVP Generator.
+model MvpPlan {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  objective            String
+  mustHaveFeatures       String[] @map("must_have_features")
+  shouldHaveFeatures       String[] @map("should_have_features")
+  laterFeatures              String[] @map("later_features")
+  targetUsers                  String   @map("target_users")
+  coreUserJourney                String   @map("core_user_journey")
+  developmentPriority              String   @map("development_priority")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("mvp_plans")
+}
+
+// ==================================================
+// Recommendations & validation experiments
+// ==================================================
+
+/// General recommendations surfaced across the analysis (e.g. "Biggest
+/// Opportunity", "Most Important Recommendation", "What You Should
+/// Validate First"). Multiple per analysis, ranked by priority.
+model Recommendation {
+  id         String   @id @default(cuid())
+  analysisId String   @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  title       String
+  description  String
+  priority       RecommendationPriority
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([analysisId])
+  @@map("recommendations")
+}
+
+/// A single generated validation experiment, per the
+/// hypothesis/method/decision-rule structure from the spec.
+model ValidationExperiment {
+  id         String   @id @default(cuid())
+  analysisId String   @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  experimentName    String @map("experiment_name")
+  hypothesis          String
+  targetAudience        String @map("target_audience")
+  method                  String
+  requiredSample            String @map("required_sample")
+  successMetric               String @map("success_metric")
+  failureThreshold               String @map("failure_threshold")
+  duration                          String
+
+  decision ExperimentDecision @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([analysisId])
+  @@map("validation_experiments")
+}
+
+// ==================================================
+// Report
+// ==================================================
+
+/// The downloadable report — generated on demand from everything else
+/// attached to the Analysis, cached here so it isn't rebuilt every time.
+model Report {
+  id         String   @id @default(cuid())
+  analysisId String   @unique @map("analysis_id")
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  content     String // rendered report body (markdown/HTML — decided in Phase 14)
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  @@map("reports")
+}

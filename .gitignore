@@ -1,0 +1,41 @@
+# ---- Dependencies ----
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# ---- Environment variables ----
+.env
+.env.local
+.env.*.local
+
+# ---- Build output ----
+dist/
+build/
+frontend/dist/
+backend/dist/
+
+# ---- Prisma ----
+# Migrations (backend/prisma/migrations/) ARE committed to git on purpose —
+# they're the source of truth for the database schema's history.
+backend/prisma/*.db
+
+# ---- Logs ----
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ---- Editor / OS ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Testing / coverage ----
+coverage/
+.nyc_output/
+
+# ---- Misc ----
+*.local
+.tmp/
